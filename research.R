@@ -6,6 +6,7 @@
 
 # Show the code
 echo = TRUE
+options(scipen = 1)  # Turn off scientific notations for numbers
 
 # Change working directory to the script location
 script.dir <- dirname(sys.frame(1)$ofile)
@@ -23,8 +24,7 @@ libs <- function(...) {
     library(lib, character.only = TRUE)
   })
 }
-libs("R.utils", "data.table")
-
+libs("R.utils", "data.table", "dplyr")
 
 ### Data (Down)load
 storm_data_file <- "StormData.csv"
@@ -46,19 +46,36 @@ storm_data$YEAR <- as.numeric(
   format(as.Date(storm_data$BGN_DATE, "%m/%d/%Y %H:%M:%S"), "%Y"))
 
 # Reduce columns to only those needed for answering the questions
-health_data <- c("FATALITIES", "INJURIES")       # Health
-economic_data <- c("PROPDMGEXP", "CROPDMGEXP")   # Economy
+health_data <- c("FATALITIES", "INJURIES")          # Health
+economic_data <- c("PROPDMG", "CROPDMG")            # Economy
+
 storm_data <- subset(storm_data, select=c(
   "YEAR",                         # Timeline
   "EVTYPE",                       # Weather Events 
-  health_factors,
-  economic_factors
+  health_data,
+  economic_data,
+  "PROPDMGEXP", "CROPDMGEXP"      # Economy (extent)
 ))
 
-# The columns representing economic consequences contain characters instead of numeric values.
-# The characters stand for multipliers:
-# "" .. zero (no impact), K .. thousand, M .. million, B .. billion
-# TODO: transform to numbers
+## PROPDMGEXP and CROPDMGEXP represent the scale of property and crop damage.
+## They are effectively multipliers of the values in PROPDMG and CROPDMG columns.
+
+# First of all, standardize multiplier values
+storm_data <- mutate_each(storm_data, funs(tolower), 
+                          which(colnames(storm_data) %in% economic_data_mult))
+
+# Next, multiply the cost of damage
+multiplier <- function(m, x) {
+  m_val <- switch(m, 
+         "h" = 2,
+         "k" = 3,
+         "m" = 6,
+         "b" = 9,
+         0)
+  return (x * 10^m_val)
+}
+storm_data <- mutate(storm_data, PROPDMG = mapply(multiplier, storm_data$PROPDMGEXP, storm_data$PROPDMG))
+storm_data <- mutate(storm_data, CROPDMG = mapply(multiplier, storm_data$CROPDMGEXP, storm_data$CROPDMG))
 
 # Plot a histogram to find out about representative years
 png("plot1.png")
@@ -92,4 +109,4 @@ lapply(health_data, sum_by_aspect)
 
 ## Q2. Across the United States, which types of events have 
 ## the greatest economic consequences?
-#lapply(economic_data, sum_by_aspect)
+lapply(economic_data, sum_by_aspect)
