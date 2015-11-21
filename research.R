@@ -24,7 +24,7 @@ libs <- function(...) {
     library(lib, character.only = TRUE)
   })
 }
-libs("R.utils", "data.table", "dplyr")
+libs("R.utils", "data.table", "dplyr", "ggplot2")
 
 ### Data (Down)load
 storm_data_file <- "StormData.csv"
@@ -65,7 +65,7 @@ storm_data <- mutate_each(storm_data, funs(tolower),
                           which(colnames(storm_data) %in% economic_data_mult))
 
 # Next, multiply the cost of damage
-multiplier <- function(m, x) {
+multiply <- function(m, x) {
   m_val <- switch(m, 
          "h" = 2,
          "k" = 3,
@@ -74,8 +74,8 @@ multiplier <- function(m, x) {
          0)
   return (x * 10^m_val)
 }
-storm_data <- mutate(storm_data, PROPDMG = mapply(multiplier, storm_data$PROPDMGEXP, storm_data$PROPDMG))
-storm_data <- mutate(storm_data, CROPDMG = mapply(multiplier, storm_data$CROPDMGEXP, storm_data$CROPDMG))
+storm_data <- mutate(storm_data, PROPDMG = mapply(multiply, storm_data$PROPDMGEXP, storm_data$PROPDMG))
+storm_data <- mutate(storm_data, CROPDMG = mapply(multiply, storm_data$CROPDMGEXP, storm_data$CROPDMG))
 
 # Plot a histogram to find out about representative years
 png("plot1.png")
@@ -90,23 +90,31 @@ storm_data <- subset(storm_data, (YEAR >= 1990) & (YEAR <= 2010))
 
 # Summarize weather events by the given health or economic aspect. 
 # Results are plotted as a histogram.
-sum_by_aspect <- function(x) {
+sum_by_aspect <- function(x, debug = FALSE) {
   # Summarize weather events by the given health aspect
-  summary <- aggregate(subset(storm_data, select = x), list(storm_data$EVTYPE), "sum")
+  summary <- aggregate(subset(storm_data, select = x), list(EVTYPE = storm_data$EVTYPE), "sum")
   
   # Sort in a descending order (most frequent first)
   setorderv(summary, x, -1)
   
-  print(head(summary))
+  if (debug) {
+    print(head(summary))  
+  }
   
-  # TODO render a histogram
+  return (summary)
 }
 
 ## Q1. Across the United States, which types of events 
 ## (as indicated in the EVTYPE variable) are most harmful 
 ## with respect to population health?
-lapply(health_data, sum_by_aspect)
+fatalities <- sum_by_aspect("FATALITIES")
+injuries <- sum_by_aspect("INJURIES")
+
+# TODO plot fatalities and injuries
 
 ## Q2. Across the United States, which types of events have 
 ## the greatest economic consequences?
-lapply(economic_data, sum_by_aspect)
+property_damage <- sum_by_aspect("PROPDMG")
+crop_damage <- sum_by_aspect("CROPDMG")
+
+# TODO plot property and crop damage
