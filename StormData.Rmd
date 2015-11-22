@@ -1,6 +1,9 @@
 ---
-title: "Reproducible Research: Peer Assessment 2"
-output: html_document
+title: "Impact of Severe Weather Events on U.S. Health and Economy"
+author: Tomas Zezula, November 2015
+output: 
+  html_document:
+    toc: true
 keep_md: true
 ---
 ## Synopsis
@@ -8,13 +11,19 @@ This report concludes findings about severe weather events and their impact on p
 
 ## Configuration
 ```{r}
-# Show the code
+# Trace code execution
 echo = TRUE
+
+# Overrides scientific format on the y-axis in plots
+options("scipen" = 20)
+
+# Number formatting, limits the number of decimal places
+options("digits" = 3)
 ```
 
 ## Utility Functions
 ```{r}
-# Quantifies multiplication symbols as an nth power of ten.
+# Quantifies multiplication symbols in billions (of US Dollars).
 multiply <- function(m, x) {
   m_val <- switch(m, 
                   "h" = 2,
@@ -22,7 +31,7 @@ multiply <- function(m, x) {
                   "m" = 6,
                   "b" = 9,
                   0)
-  return (x * 10^m_val)
+  return ((x * 10^m_val) / 10^9)
 }
 
 # Draws a bar chart.
@@ -31,18 +40,20 @@ multiply <- function(m, x) {
 # ylab      .. y-axis label
 # ylab_unit .. y-axis unit (optional)
 # title     .. a distinct part of a chart title
-bar_chart <- function(df, weight, ylab, ylab_unit = NA, title, filename) {
+bar_chart <- function(df, weight, ylab, ylab_unit = NA, title) {
   ylab_title <- paste(ylab, title)
   if (!is.na(ylab_unit)) {
     ylab_title <- paste(ylab_title, "in", ylab_unit)
   }
   qplot(EVTYPE, data = df, weight = weight, geom = "bar", binwidth = 1) + 
-           scale_y_continuous(ylab_title) + 
-           theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
-           xlab("Extreme Weather Event") + 
-           ggtitle(paste(title, 
-                         "by Extreme Weather Events in the US\nbetween", 
-                         year_from, "and", year_to))
+         scale_y_continuous(ylab_title) + 
+         theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+         xlab("Extreme Weather Event") + 
+         ggtitle(paste(title, 
+                       "\nby Extreme Weather Events in the US\nbetween", 
+                       year_from, "and", year_to)) +
+         theme(axis.title=element_text(size = 9), 
+               plot.title = element_text(size = 11))
 }
 
 # Transforms a column name into a description
@@ -55,9 +66,9 @@ as_title <- function(x) {
   gsub("dmg$", " Damage", title)
 }
 
-# Summarizes weather events by the given health or economic aspect. 
-# Results are plotted as a histogram.
-sum_by_aspect <- function(x, ylab, ylab_unit = NA, cap = 10, debug = FALSE) {
+# Summarizes weather events by the given health or economic aspect
+# and returns results as a bar chart.
+plot_by_aspect <- function(x, ylab, ylab_unit = NA, cap = 10, debug = TRUE) {
   # Summarize weather events by the given health aspect
   summary <- aggregate(subset(storm_data, select = x), list(EVTYPE = storm_data$EVTYPE), "sum")
   
@@ -68,11 +79,35 @@ sum_by_aspect <- function(x, ylab, ylab_unit = NA, cap = 10, debug = FALSE) {
   top_n <- head(summary, cap)
   
   if (debug) {
-    print(top_n)  
+    heading <- paste("###", as_title(x))
+    if (!is.na(ylab_unit)) {
+      heading <- paste(heading, "in", ylab_unit)
+    }
+    heading <- paste(heading, "###")
+    print(heading)
+    print(top_n)
   }
   
   # Plot it on a bar chart
-  bar_chart(top_n, top_n[, x], ylab, ylab_unit, as_title(x), tolower(x))
+  bar_chart(top_n, top_n[, x], ylab, ylab_unit, as_title(x))
+}
+
+# Plots a specific aspect of health impact of severe weather events.
+# x .. healht aspect, such as injuries or fatalities
+plot_health_impact <- function(x) {
+  plot_by_aspect(x, "Number of")    
+}
+
+# Plots a specific aspect of economic impact of severe weather events.
+# x .. economic aspect, such as crop or property damage
+plot_damage <- function(x) {
+  plot_by_aspect(x, "Cost of", "Billions of US Dollars")    
+}
+
+# Plots a group of related charts
+# [varargs] .. one or more charts to be plotted as part ot the same figure
+plot_group <- function(...) {
+  grid.arrange(..., ncol = length(list(...)))
 }
 ```
 
@@ -88,7 +123,7 @@ libs <- function(...) {
   })
 }
 
-## Import all libraries
+# Import all libraries
 libs(
   "R.utils",                                 # To decompress the downloaded archive
   "data.table",                              # Data manipulation
@@ -124,17 +159,16 @@ storm_data$YEAR <- as.numeric(
 To speed up processing time and reduce memory footprint table columns are stripped down to a bare minimum, i.e. only those needed to answer questions about extreme weather events.
 
 ```{r}
-health_data <- c("FATALITIES", "INJURIES")          # Health
-economic_data <- c("PROPDMG", "CROPDMG")            # Economy
-economic_data_mult <- c("PROPDMGEXP", "CROPDMGEXP") # Economy (extent)
+# Economic Multiplicators
+economic_data_mult <- c("PROPDMGEXP", "CROPDMGEXP") 
 
+# Reduce columns to only those needed for answering the questions
 storm_data <- subset(storm_data, select=c(
   "YEAR",                         # Timeline
   "EVTYPE",                       # Weather Events 
-  health_data,
-  economic_data,
-  economic_data_mult      
-))
+  "FATALITIES", "INJURIES",       # Health
+  "PROPDMG", "CROPDMG",           # Economy
+  economic_data_mult))
 ```
 
 PROPDMGEXP and CROPDMGEXP represent the scale of property and crop damage. They are effectively multipliers of the values in PROPDMG and CROPDMG columns.
@@ -146,6 +180,7 @@ storm_data <- mutate_each(storm_data, funs(tolower),
                           which(colnames(storm_data) %in% economic_data_mult))
 ```
 
+## Results
 Now we are in a position to quantify the damage by using a custom utility function called 'multiply' (see the section: Utility Functions).
 
 ```{r}
@@ -162,7 +197,7 @@ hist(storm_data$YEAR,
      xlab = "Year")
 ```
 
-The most extreme weather events happened between 1990 - 2010. Let's limit the observations to the found time span.
+The most extreme weather events happened between 1990 - 2010. Let's limit the observations to the relevant time period.
 
 ```{r}
 year_from <- 1990
@@ -173,18 +208,23 @@ storm_data <- subset(storm_data, (YEAR >= year_from) & (YEAR <= year_to))
 Now we are ready to answer the question about the most harmful events with respect to population health. The following code will capture top ten events in these regards and plot them as a single figure.
 
 ```{r}
-lapply(health_data, function(x) {
-  sum_by_aspect(x, "Number of")
-})
+plot_group(
+  plot_health_impact("INJURIES"),
+  plot_health_impact("FATALITIES")
+)
 ```
 
 Finally, we look at the events causing the most extensive economic damage. The code produces a single figure providing an overview of severe weather conditions having a considerable economic impact.
 
 ```{r}
-lapply(economic_data, function(x) {
-  sum_by_aspect(x, "Cost of", "US Dollars")
-})
+plot_group(
+  plot_damage("PROPDMG"),
+  plot_damage("CROPDMG")
+)
 ```
 
-## Results
-TODO - fix the figures first!
+## Conclusion
+The most severe weather conditions most harmful to **human health** were **tornados** and **excessive heat**. Tornados alone caused more than 20.000 injuries, whereas excessive heat proved to have been the most lethal factor leading to almost 2.000 fatalities between 1990 and 2010.
+
+In terms of **economic consequences**, **flood** was the most devastating weather element causing close to 140 billion (USD) of **property damage**. Another dominant factor was **drought** causing an extensive **crop failure**.  
+
